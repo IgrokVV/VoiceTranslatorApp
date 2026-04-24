@@ -7,7 +7,8 @@
         x:Class="VoiceTranslatorApp.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="VoiceTranslatorApp">
+        Title="Голосовой переводчик"
+        Background="#0F172A">
 
     <Design.DataContext>
         <!-- This only sets the DataContext for the previewer in an IDE,
@@ -15,6 +16,92 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <Grid RowDefinitions="Auto,*" Margin="18" RowSpacing="16">
+        <Border Background="#111827"
+                BorderBrush="#334155"
+                BorderThickness="1"
+                CornerRadius="14"
+                Padding="6">
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button x:Name="VoiceModelsButton"
+                        Grid.Column="0"
+                        Click="ShowVoiceModels"
+                        Background="#2563EB"
+                        Foreground="White"
+                        CornerRadius="10"
+                        FontWeight="SemiBold"
+                        FontSize="15"
+                        Padding="14,12"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                        <TextBlock Text="🎙"/>
+                        <TextBlock Text="Голосовые модели"/>
+                    </StackPanel>
+                </Button>
+
+                <Button x:Name="TranslationButton"
+                        Grid.Column="1"
+                        Click="ShowTranslation"
+                        Background="#1E293B"
+                        Foreground="#E2E8F0"
+                        CornerRadius="10"
+                        FontWeight="SemiBold"
+                        FontSize="15"
+                        Padding="14,12"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                        <TextBlock Text="🌍"/>
+                        <TextBlock Text="Перевод"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Background="#111827"
+                BorderBrush="#334155"
+                BorderThickness="1"
+                CornerRadius="14"
+                Padding="20"
+                ClipToBounds="True">
+            <Grid>
+                <Grid x:Name="VoiceModelsPanel" IsVisible="True">
+                    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+                        <TextBlock Text="Голосовые модели" FontSize="24" FontWeight="Bold" Foreground="White"/>
+                        <TextBlock Grid.Row="1"
+                                   Text="Раздел для управления голосовыми моделями."
+                                   TextWrapping="Wrap"
+                                   Foreground="#94A3B8"/>
+                        <Border Grid.Row="2"
+                                Background="#0B1220"
+                                BorderBrush="#1E293B"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                MinHeight="220"
+                                VerticalAlignment="Stretch"/>
+                    </Grid>
+                </Grid>
+
+                <Grid x:Name="TranslationPanel" IsVisible="False">
+                    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+                        <TextBlock Text="Перевод" FontSize="24" FontWeight="Bold" Foreground="White"/>
+                        <TextBlock Grid.Row="1"
+                                   Text="Раздел для перевода и подготовки текста."
+                                   TextWrapping="Wrap"
+                                   Foreground="#94A3B8"/>
+                        <Border Grid.Row="2"
+                                Background="#0B1220"
+                                BorderBrush="#1E293B"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                MinHeight="220"
+                                VerticalAlignment="Stretch"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
 
 </Window>
