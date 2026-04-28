@@ -96,8 +96,148 @@
                                 BorderBrush="#1E293B"
                                 BorderThickness="1"
                                 CornerRadius="12"
+                                Padding="16"
                                 MinHeight="220"
-                                VerticalAlignment="Stretch"/>
+                                VerticalAlignment="Stretch">
+                            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="18">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="16" RowDefinitions="Auto,Auto" RowSpacing="12">
+                                    <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
+                                        <TextBlock Text="С какого переводим"
+                                                   Foreground="#CBD5E1"
+                                                   FontSize="14"/>
+                                        <ComboBox SelectedIndex="0"
+                                                  Background="#111827"
+                                                  Foreground="#E2E8F0"
+                                                  BorderBrush="#334155"
+                                                  BorderThickness="1"
+                                                  CornerRadius="8"
+                                                  Padding="12,10"
+                                                  HorizontalAlignment="Stretch">
+                                            <ComboBoxItem Content="Русский"/>
+                                            <ComboBoxItem Content="Английский"/>
+                                            <ComboBoxItem Content="Немецкий"/>
+                                            <ComboBoxItem Content="Французский"/>
+                                            <ComboBoxItem Content="Испанский"/>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="0" Grid.Column="1" Spacing="8">
+                                        <TextBlock Text="На какой переводим"
+                                                   Foreground="#CBD5E1"
+                                                   FontSize="14"/>
+                                        <ComboBox SelectedIndex="1"
+                                                  Background="#111827"
+                                                  Foreground="#E2E8F0"
+                                                  BorderBrush="#334155"
+                                                  BorderThickness="1"
+                                                  CornerRadius="8"
+                                                  Padding="12,10"
+                                                  HorizontalAlignment="Stretch">
+                                            <ComboBoxItem Content="Русский"/>
+                                            <ComboBoxItem Content="Английский"/>
+                                            <ComboBoxItem Content="Немецкий"/>
+                                            <ComboBoxItem Content="Французский"/>
+                                            <ComboBoxItem Content="Испанский"/>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="8">
+                                        <TextBlock Text="Устройство ввода"
+                                                   Foreground="#CBD5E1"
+                                                   FontSize="14"/>
+                                        <ComboBox x:Name="InputDeviceComboBox"
+                                                  SelectedIndex="0"
+                                                  Background="#111827"
+                                                  Foreground="#E2E8F0"
+                                                  BorderBrush="#334155"
+                                                  BorderThickness="1"
+                                                  CornerRadius="8"
+                                                  Padding="12,10"
+                                                  HorizontalAlignment="Stretch"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="8">
+                                        <TextBlock Text="Устройство вывода"
+                                                   Foreground="#CBD5E1"
+                                                   FontSize="14"/>
+                                        <ComboBox x:Name="OutputDeviceComboBox"
+                                                  SelectedIndex="0"
+                                                  Background="#111827"
+                                                  Foreground="#E2E8F0"
+                                                  BorderBrush="#334155"
+                                                  BorderThickness="1"
+                                                  CornerRadius="8"
+                                                  Padding="12,10"
+                                                  HorizontalAlignment="Stretch"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Grid.Row="1" ColumnDefinitions="48*,4*,48*">
+                                    <Grid Grid.Column="0" RowDefinitions="Auto,*" RowSpacing="8">
+                                        <TextBlock Text="Оригинальный текст"
+                                                   Foreground="#CBD5E1"
+                                                   FontSize="14"/>
+                                        <TextBox Grid.Row="1"
+                                                 x:Name="OriginalTextTextBox"
+                                                 AcceptsReturn="True"
+                                                 IsReadOnly="True"
+                                                 Focusable="False"
+                                                 Watermark="Здесь появится текст до перевода"
+                                                 Background="#111827"
+                                                 Foreground="#E2E8F0"
+                                                 BorderBrush="#334155"
+                                                 BorderThickness="1"
+                                                 CornerRadius="8"
+                                                 Padding="12"
+                                                 TextWrapping="Wrap"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 VerticalAlignment="Stretch"
+                                                 VerticalContentAlignment="Top"/>
+                                    </Grid>
+
+                                    <Grid Grid.Column="2" RowDefinitions="Auto,*" RowSpacing="8">
+                                        <TextBlock Text="Переведённый текст"
+                                                   Foreground="#CBD5E1"
+                                                   FontSize="14"/>
+                                        <TextBox Grid.Row="1"
+                                                 AcceptsReturn="True"
+                                                 IsReadOnly="True"
+                                                 Focusable="False"
+                                                 Watermark="Здесь появится переведённый текст"
+                                                 Background="#111827"
+                                                 Foreground="#E2E8F0"
+                                                 BorderBrush="#334155"
+                                                 BorderThickness="1"
+                                                 CornerRadius="8"
+                                                 Padding="12"
+                                                 TextWrapping="Wrap"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 VerticalAlignment="Stretch"
+                                                 VerticalContentAlignment="Top"/>
+                                    </Grid>
+                                </Grid>
+
+                                <Grid Grid.Row="2" ColumnDefinitions="2*,6*,2*">
+                                    <Button x:Name="StartTranslationButton"
+                                            Grid.Column="1"
+                                            Click="StartTranslation"
+                                            Content="Начать перевод"
+                                            Background="#16A34A"
+                                            Foreground="White"
+                                            CornerRadius="12"
+                                            Height="56"
+                                            FontWeight="Bold"
+                                            FontSize="18"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"
+                                            TextBlock.TextAlignment="Center"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Bottom"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
                     </Grid>
                 </Grid>
             </Grid>
