@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using VoiceTranslatorApp.Services;
 
 namespace VoiceTranslatorApp.Views
@@ -16,10 +18,10 @@ namespace VoiceTranslatorApp.Views
     public partial class MainWindow : Window
     {
         private bool _isTranslationRunning;
-        private const string VoskModelDirectoryName = "vosk-model-small-ru-0.22";
+        private const string VoskRuModelDir = "vosk-model-small-ru-0.22";
+        private const string VoskEnModelDir = "vosk-model-small-en-us-0.15";
         private readonly IVoiceCaptureService _voiceCaptureService = new VoiceCaptureService();
-        private readonly IRealtimeSpeechToTextService _speechToTextService;
-        private readonly string _voskModelPath;
+        private IRealtimeSpeechToTextService? _speechToTextService;
         private readonly Dictionary<string, string> _inputDevices = [];
         private readonly StringBuilder _recognizedFinalText = new();
         private readonly object _audioRecordingSync = new();
@@ -27,16 +29,30 @@ namespace VoiceTranslatorApp.Views
         private WaveFileWriter? _sessionWaveWriter;
         private string? _sessionRecordingPath;
         private long _sessionRecordedBytes;
-        private string? _lastSavedRecordingPath;
+        private readonly ITranslationService _translationService = new YandexTranslateService();
+        private int _translateDebounceNonce;
+        private string _sessionSourceLangCode = "ru";
+        private string _sessionTargetLangCode = "en";
+
+        private static readonly Dictionary<string, string> LanguageDisplayToCode =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Русский"] = "ru",
+                ["Английский"] = "en",
+                ["Немецкий"] = "de",
+                ["Французский"] = "fr",
+                ["Испанский"] = "es",
+            };
+
+        /// <summary>
+        /// Порядок совпадает с элементами ComboBox в MainWindow.axaml (оба списка языков одинаковые).
+        /// </summary>
+        private static readonly string[] LanguageCodesByComboOrder = ["ru", "en", "de", "fr", "es"];
 
         public MainWindow()
         {
             InitializeComponent();
-            _voskModelPath = ResolveVoskModelPath();
-            _speechToTextService = new VoskRealtimeSpeechToTextService(_voskModelPath);
             _voiceCaptureService.AudioChunkCaptured += OnAudioChunkCaptured;
-            _speechToTextService.PartialTextUpdated += OnPartialTextUpdated;
-            _speechToTextService.FinalTextUpdated += OnFinalTextUpdated;
             LoadAudioDevices();
         }
 
@@ -123,14 +139,38 @@ namespace VoiceTranslatorApp.Views
                     ? id
                     : null;
 
+                Interlocked.Increment(ref _translateDebounceNonce);
+
                 _recognizedFinalText.Clear();
                 _recognizedPartialText = string.Empty;
                 OriginalTextTextBox.Text = string.Empty;
-                _lastSavedRecordingPath = null;
-                if (!Directory.Exists(_voskModelPath))
+                TranslatedTextTextBox.Text = string.Empty;
+
+                _sessionSourceLangCode = GetSelectedLanguageCode(SourceLanguageComboBox);
+                _sessionTargetLangCode = GetSelectedLanguageCode(TargetLanguageComboBox);
+
+                var voskModelDir = GetVoskModelDirectoryNameForSourceLanguage(_sessionSourceLangCode);
+                if (voskModelDir is null)
                 {
                     _isTranslationRunning = false;
-                    OriginalTextTextBox.Text = BuildModelNotFoundMessage();
+                    OriginalTextTextBox.Text =
+                        "Распознавание речи для выбранного языка недоступно: в проекте есть только модели Vosk для русского и английского. " +
+                        "Выберите «Русский» или «Английский» в поле «С какого переводим».";
+                    return;
+                }
+
+                var modelPath = ResolveVoskModelPath(voskModelDir);
+                if (!Directory.Exists(modelPath))
+                {
+                    _isTranslationRunning = false;
+                    OriginalTextTextBox.Text = BuildModelNotFoundMessage(voskModelDir);
+                    return;
+                }
+
+                ReplaceSpeechToTextService(modelPath);
+                if (_speechToTextService is null)
+                {
+                    _isTranslationRunning = false;
                     return;
                 }
 
@@ -144,51 +184,99 @@ namespace VoiceTranslatorApp.Views
                 {
                     _isTranslationRunning = false;
                     FinishRecordingSession();
+                    ReleaseSpeechToTextService();
                     OriginalTextTextBox.Text = $"Ошибка распознавания: {ex.Message}";
                     return;
                 }
+
+                SetTranslationLanguageSelectorsEnabled(isEnabled: false);
+
                 _voiceCaptureService.Start(selectedInputId);
                 StartTranslationButton.Content = "Перевод идёт";
                 StartTranslationButton.Background = new SolidColorBrush(Color.Parse("#DC2626"));
                 return;
             }
 
+            Interlocked.Increment(ref _translateDebounceNonce);
+
             _voiceCaptureService.Stop();
-            _speechToTextService.Stop();
+
+            _speechToTextService?.Stop();
+            ReleaseSpeechToTextService();
+
+            var capturedText = BuildCombinedRecognizedText();
+            Dispatcher.UIThread.Post(() => OriginalTextTextBox.Text = capturedText.TrimEnd());
+
             SaveCapturedAudioRecording();
+
             StartTranslationButton.Content = "Начать перевод";
             StartTranslationButton.Background = new SolidColorBrush(Color.Parse("#16A34A"));
-            UpdateOriginalTextBox();
+
+            _ = RunFinalTranslateAsync(capturedText);
         }
 
         protected override void OnClosed(EventArgs e)
         {
+            Interlocked.Increment(ref _translateDebounceNonce);
+
             _voiceCaptureService.Stop();
             SaveCapturedAudioRecording();
             _voiceCaptureService.AudioChunkCaptured -= OnAudioChunkCaptured;
-            _speechToTextService.PartialTextUpdated -= OnPartialTextUpdated;
-            _speechToTextService.FinalTextUpdated -= OnFinalTextUpdated;
-            _speechToTextService.Dispose();
+            _speechToTextService?.Stop();
+            ReleaseSpeechToTextService();
+            _translationService.Dispose();
             base.OnClosed(e);
         }
 
-        private string BuildModelNotFoundMessage()
+        private string BuildModelNotFoundMessage(string modelDirectoryName)
         {
-            var candidatePaths = GetModelPathCandidates().ToList();
+            var candidatePaths = GetModelPathCandidates(modelDirectoryName).ToList();
             var searchPaths = string.Join(Environment.NewLine, candidatePaths.Select(path => $"- {path}"));
 
-            return $"Ошибка распознавания: модель Vosk не найдена ({VoskModelDirectoryName}).{Environment.NewLine}" +
+            return $"Ошибка распознавания: модель Vosk не найдена ({modelDirectoryName}).{Environment.NewLine}" +
                    $"Положи модель в одну из папок:{Environment.NewLine}{searchPaths}{Environment.NewLine}" +
                    "Или укажи путь через переменную окружения VOSK_MODEL_PATH.";
         }
 
-        private string ResolveVoskModelPath()
+        private string ResolveVoskModelPath(string modelDirectoryName)
         {
-            return GetModelPathCandidates().FirstOrDefault(Directory.Exists)
-                   ?? Path.Combine(AppContext.BaseDirectory, "Models", VoskModelDirectoryName);
+            return GetModelPathCandidates(modelDirectoryName).FirstOrDefault(Directory.Exists)
+                   ?? Path.Combine(AppContext.BaseDirectory, "Models", modelDirectoryName);
         }
 
-        private static IEnumerable<string> GetModelPathCandidates()
+        private static string? GetVoskModelDirectoryNameForSourceLanguage(string sourceLanguageCode)
+        {
+            return sourceLanguageCode switch
+            {
+                "ru" => VoskRuModelDir,
+                "en" => VoskEnModelDir,
+                _ => null,
+            };
+        }
+
+        private void ReplaceSpeechToTextService(string modelPath)
+        {
+            ReleaseSpeechToTextService();
+            var service = new VoskRealtimeSpeechToTextService(modelPath);
+            service.PartialTextUpdated += OnPartialTextUpdated;
+            service.FinalTextUpdated += OnFinalTextUpdated;
+            _speechToTextService = service;
+        }
+
+        private void ReleaseSpeechToTextService()
+        {
+            if (_speechToTextService is null)
+            {
+                return;
+            }
+
+            _speechToTextService.PartialTextUpdated -= OnPartialTextUpdated;
+            _speechToTextService.FinalTextUpdated -= OnFinalTextUpdated;
+            _speechToTextService.Dispose();
+            _speechToTextService = null;
+        }
+
+        private static IEnumerable<string> GetModelPathCandidates(string modelDirectoryName)
         {
             var candidates = new List<string>();
 
@@ -198,15 +286,15 @@ namespace VoiceTranslatorApp.Views
                 candidates.Add(fromEnvironment);
             }
 
-            candidates.Add(Path.Combine(AppContext.BaseDirectory, "Models", VoskModelDirectoryName));
-            candidates.Add(Path.Combine(AppContext.BaseDirectory, VoskModelDirectoryName));
-            candidates.Add(Path.Combine(Directory.GetCurrentDirectory(), "Models", VoskModelDirectoryName));
+            candidates.Add(Path.Combine(AppContext.BaseDirectory, "Models", modelDirectoryName));
+            candidates.Add(Path.Combine(AppContext.BaseDirectory, modelDirectoryName));
+            candidates.Add(Path.Combine(Directory.GetCurrentDirectory(), "Models", modelDirectoryName));
 
             var solutionRoot = FindSolutionRoot();
             if (!string.IsNullOrWhiteSpace(solutionRoot))
             {
-                candidates.Add(Path.Combine(solutionRoot, "VoiceTranslatorApp", "Models", VoskModelDirectoryName));
-                candidates.Add(Path.Combine(solutionRoot, "Models", VoskModelDirectoryName));
+                candidates.Add(Path.Combine(solutionRoot, "VoiceTranslatorApp", "Models", modelDirectoryName));
+                candidates.Add(Path.Combine(solutionRoot, "Models", modelDirectoryName));
             }
 
             return candidates.Distinct();
@@ -237,7 +325,7 @@ namespace VoiceTranslatorApp.Views
                 _sessionRecordedBytes += audioChunk.Length;
             }
 
-            _speechToTextService.ProcessAudioChunk(audioChunk);
+            _speechToTextService?.ProcessAudioChunk(audioChunk);
         }
 
         private void OnPartialTextUpdated(object? sender, string partialText)
@@ -262,23 +350,148 @@ namespace VoiceTranslatorApp.Views
             UpdateOriginalTextBox();
         }
 
-        private void UpdateOriginalTextBox()
+        private string BuildCombinedRecognizedText()
         {
             var finalText = _recognizedFinalText.ToString();
-            var combinedText = string.IsNullOrWhiteSpace(_recognizedPartialText)
+            return string.IsNullOrWhiteSpace(_recognizedPartialText)
                 ? finalText
                 : string.IsNullOrWhiteSpace(finalText)
                     ? _recognizedPartialText
                     : $"{finalText} {_recognizedPartialText}";
+        }
 
-            if (!_isTranslationRunning && !string.IsNullOrWhiteSpace(_lastSavedRecordingPath))
-            {
-                combinedText = string.IsNullOrWhiteSpace(combinedText)
-                    ? $"Аудио сохранено: {_lastSavedRecordingPath}"
-                    : $"{combinedText}{Environment.NewLine}{Environment.NewLine}Аудио сохранено: {_lastSavedRecordingPath}";
-            }
+        private void UpdateOriginalTextBox()
+        {
+            var combinedText = BuildCombinedRecognizedText();
 
             Dispatcher.UIThread.Post(() => OriginalTextTextBox.Text = combinedText);
+            ScheduleDebouncedTranslation(combinedText.Trim());
+        }
+
+        private void ScheduleDebouncedTranslation(string trimmedForTranslate)
+        {
+            if (!_isTranslationRunning)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(trimmedForTranslate))
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (_isTranslationRunning)
+                    {
+                        TranslatedTextTextBox.Text = string.Empty;
+                    }
+                });
+                return;
+            }
+
+            var nonce = Interlocked.Increment(ref _translateDebounceNonce);
+            var source = _sessionSourceLangCode;
+            var target = _sessionTargetLangCode;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(400).ConfigureAwait(false);
+                    if (nonce != Volatile.Read(ref _translateDebounceNonce) || !_isTranslationRunning)
+                    {
+                        return;
+                    }
+
+                    var translated = await _translationService
+                        .TranslateAsync(trimmedForTranslate, source, target)
+                        .ConfigureAwait(false);
+
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        if (!_isTranslationRunning || nonce != Volatile.Read(ref _translateDebounceNonce))
+                        {
+                            return;
+                        }
+
+                        TranslatedTextTextBox.Text = translated;
+                    });
+                }
+                catch (Exception ex)
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        if (!_isTranslationRunning || nonce != Volatile.Read(ref _translateDebounceNonce))
+                        {
+                            return;
+                        }
+
+                        TranslatedTextTextBox.Text = $"Ошибка перевода: {ex.Message}";
+                    });
+                }
+            });
+        }
+
+        private async Task RunFinalTranslateAsync(string capturedText)
+        {
+            try
+            {
+                var trimmed = capturedText.Trim();
+                if (string.IsNullOrEmpty(trimmed))
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() => TranslatedTextTextBox.Text = string.Empty);
+                    return;
+                }
+
+                try
+                {
+                    var translated = await _translationService
+                        .TranslateAsync(trimmed, _sessionSourceLangCode, _sessionTargetLangCode)
+                        .ConfigureAwait(false);
+
+                    await Dispatcher.UIThread.InvokeAsync(() => TranslatedTextTextBox.Text = translated);
+                }
+                catch (Exception ex)
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                        TranslatedTextTextBox.Text = $"Ошибка перевода: {ex.Message}");
+                }
+            }
+            finally
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => SetTranslationLanguageSelectorsEnabled(isEnabled: true));
+            }
+        }
+
+        private static string GetSelectedLanguageCode(ComboBox comboBox)
+        {
+            var idx = comboBox.SelectedIndex;
+            if (idx >= 0 && idx < LanguageCodesByComboOrder.Length)
+            {
+                return LanguageCodesByComboOrder[idx];
+            }
+
+            // Avalonia не всегда отдаёт SelectedItem как ComboBoxItem — пробуем по подписи.
+            if (comboBox.SelectedItem is ComboBoxItem item)
+            {
+                var display = item.Content?.ToString()?.Trim();
+                if (!string.IsNullOrEmpty(display) && LanguageDisplayToCode.TryGetValue(display, out var code))
+                {
+                    return code;
+                }
+            }
+
+            var text = comboBox.SelectionBoxItem?.ToString()?.Trim();
+            if (!string.IsNullOrEmpty(text) && LanguageDisplayToCode.TryGetValue(text, out var fromBox))
+            {
+                return fromBox;
+            }
+
+            return "ru";
+        }
+
+        private void SetTranslationLanguageSelectorsEnabled(bool isEnabled)
+        {
+            SourceLanguageComboBox.IsEnabled = isEnabled;
+            TargetLanguageComboBox.IsEnabled = isEnabled;
         }
 
         private void SaveCapturedAudioRecording()
@@ -293,10 +506,8 @@ namespace VoiceTranslatorApp.Views
             }
 
             FinishRecordingSession();
-
             if (string.IsNullOrWhiteSpace(recordingPath))
             {
-                _lastSavedRecordingPath = "ошибка сохранения (путь к файлу не был создан)";
                 return;
             }
 
@@ -309,18 +520,12 @@ namespace VoiceTranslatorApp.Views
                         File.Delete(recordingPath);
                     }
 
-                    _lastSavedRecordingPath = "запись пустая (данные с микрофона не поступили)";
                     return;
                 }
-
-                var fileInfo = new FileInfo(recordingPath);
-                _lastSavedRecordingPath = fileInfo.Length <= 44
-                    ? "запись пустая (получен только WAV-заголовок)"
-                    : fileInfo.FullName;
             }
-            catch (Exception ex)
+            catch
             {
-                _lastSavedRecordingPath = $"ошибка сохранения ({ex.Message})";
+                // Ignore save errors to keep translation flow uninterrupted.
             }
         }
 
@@ -338,12 +543,11 @@ namespace VoiceTranslatorApp.Views
                     _sessionWaveWriter = new WaveFileWriter(_sessionRecordingPath, new WaveFormat(16000, 16, 1));
                     _sessionRecordedBytes = 0;
                 }
-                catch (Exception ex)
+                catch
                 {
                     _sessionRecordingPath = null;
                     _sessionWaveWriter = null;
                     _sessionRecordedBytes = 0;
-                    _lastSavedRecordingPath = $"ошибка подготовки записи ({ex.Message})";
                 }
             }
         }
@@ -364,10 +568,10 @@ namespace VoiceTranslatorApp.Views
 
         private static string ResolveRecordingsPath()
         {
-            var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            if (!string.IsNullOrWhiteSpace(documentsPath))
+            var solutionRoot = FindSolutionRoot();
+            if (!string.IsNullOrWhiteSpace(solutionRoot))
             {
-                return Path.Combine(documentsPath, "VoiceTranslatorApp", "Recordings");
+                return Path.Combine(solutionRoot, "VoiceTranslatorApp", "Recordings");
             }
 
             return Path.Combine(AppContext.BaseDirectory, "Recordings");

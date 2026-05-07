@@ -359,5 +359,8 @@ MigrationBackup/
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 
+# Yandex Cloud Translate local secret (never commit)
+**/yandex.translate.local.json
+
 # Fody - auto-generated XML schema
 FodyWeavers.xsd

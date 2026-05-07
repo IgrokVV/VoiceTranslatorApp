@@ -105,7 +105,8 @@
                                         <TextBlock Text="С какого переводим"
                                                    Foreground="#CBD5E1"
                                                    FontSize="14"/>
-                                        <ComboBox SelectedIndex="0"
+                                        <ComboBox x:Name="SourceLanguageComboBox"
+                                                  SelectedIndex="0"
                                                   Background="#111827"
                                                   Foreground="#E2E8F0"
                                                   BorderBrush="#334155"
@@ -125,7 +126,8 @@
                                         <TextBlock Text="На какой переводим"
                                                    Foreground="#CBD5E1"
                                                    FontSize="14"/>
-                                        <ComboBox SelectedIndex="1"
+                                        <ComboBox x:Name="TargetLanguageComboBox"
+                                                  SelectedIndex="1"
                                                   Background="#111827"
                                                   Foreground="#E2E8F0"
                                                   BorderBrush="#334155"
@@ -201,6 +203,7 @@
                                                    Foreground="#CBD5E1"
                                                    FontSize="14"/>
                                         <TextBox Grid.Row="1"
+                                                 x:Name="TranslatedTextTextBox"
                                                  AcceptsReturn="True"
                                                  IsReadOnly="True"
                                                  Focusable="False"
