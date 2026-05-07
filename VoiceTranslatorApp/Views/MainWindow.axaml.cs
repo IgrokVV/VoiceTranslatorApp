@@ -33,6 +33,7 @@ namespace VoiceTranslatorApp.Views
         private int _translateDebounceNonce;
         private string _sessionSourceLangCode = "ru";
         private string _sessionTargetLangCode = "en";
+        private CancellationTokenSource? _periodicTranslateCts;
 
         private static readonly Dictionary<string, string> LanguageDisplayToCode =
             new(StringComparer.OrdinalIgnoreCase)
@@ -192,6 +193,59 @@ namespace VoiceTranslatorApp.Views
                 SetTranslationLanguageSelectorsEnabled(isEnabled: false);
 
                 _voiceCaptureService.Start(selectedInputId);
+                // Start periodic translation loop that translates accumulated text every 2 seconds.
+                _periodicTranslateCts?.Cancel();
+                _periodicTranslateCts = new CancellationTokenSource();
+                var periodicToken = _periodicTranslateCts.Token;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        while (!periodicToken.IsCancellationRequested && _isTranslationRunning)
+                        {
+                            try
+                            {
+                                await Task.Delay(2000, periodicToken).ConfigureAwait(false);
+                                if (periodicToken.IsCancellationRequested || !_isTranslationRunning)
+                                    break;
+
+                                var toTranslate = BuildCombinedRecognizedText().Trim();
+                                if (string.IsNullOrEmpty(toTranslate))
+                                    continue;
+
+                                var translated = await _translationService
+                                    .TranslateAsync(toTranslate, _sessionSourceLangCode, _sessionTargetLangCode, periodicToken)
+                                    .ConfigureAwait(false);
+
+                                await Dispatcher.UIThread.InvokeAsync(() =>
+                                {
+                                    if (_isTranslationRunning)
+                                    {
+                                        TranslatedTextTextBox.Text = translated;
+                                    }
+                                });
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                break;
+                            }
+                            catch (Exception ex)
+                            {
+                                await Dispatcher.UIThread.InvokeAsync(() =>
+                                {
+                                    if (_isTranslationRunning)
+                                    {
+                                        TranslatedTextTextBox.Text = $"Ошибка перевода: {ex.Message}";
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        // no-op
+                    }
+                }, periodicToken);
                 StartTranslationButton.Content = "Перевод идёт";
                 StartTranslationButton.Background = new SolidColorBrush(Color.Parse("#DC2626"));
                 return;
@@ -200,6 +254,17 @@ namespace VoiceTranslatorApp.Views
             Interlocked.Increment(ref _translateDebounceNonce);
 
             _voiceCaptureService.Stop();
+
+            // Stop periodic translation loop.
+            try
+            {
+                _periodicTranslateCts?.Cancel();
+                _periodicTranslateCts?.Dispose();
+            }
+            catch
+            {
+            }
+            _periodicTranslateCts = null;
 
             _speechToTextService?.Stop();
             ReleaseSpeechToTextService();
