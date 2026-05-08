@@ -35,7 +35,7 @@
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                        <TextBlock Text="🎙"/>
+                        
                         <TextBlock Text="Голосовые модели"/>
                     </StackPanel>
                 </Button>
@@ -52,7 +52,7 @@
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                        <TextBlock Text="🌍"/>
+                        
                         <TextBlock Text="Перевод"/>
                     </StackPanel>
                 </Button>
@@ -225,7 +225,7 @@
                                 </Grid>
 
                                 <Grid Grid.Row="2" ColumnDefinitions="2*,6*,2*">
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
+                                    <Grid Grid.Column="1" HorizontalAlignment="Center">
                                         <Button x:Name="StartTranslationButton"
                                                 Click="StartTranslation"
                                                 Content="Начать перевод"
@@ -233,27 +233,13 @@
                                                 Foreground="White"
                                                 CornerRadius="12"
                                                 Height="56"
-                                                Width="220"
+                                                Width="300"
                                                 FontWeight="Bold"
                                                 FontSize="18"
                                                 HorizontalContentAlignment="Center"
                                                 VerticalContentAlignment="Center"
                                                 TextBlock.TextAlignment="Center"/>
-
-                                        <Button x:Name="PlayTranslationButton"
-                                                Click="PlayTranslationClicked"
-                                                Content="Озвучить перевод"
-                                                Background="#2563EB"
-                                                Foreground="White"
-                                                CornerRadius="12"
-                                                Height="56"
-                                                Width="200"
-                                                FontWeight="Bold"
-                                                FontSize="16"
-                                                HorizontalContentAlignment="Center"
-                                                VerticalContentAlignment="Center"
-                                                TextBlock.TextAlignment="Center"/>
-                                    </StackPanel>
+                                    </Grid>
                                 </Grid>
                             </Grid>
                         </Border>
