@@ -42,13 +42,14 @@ namespace VoiceTranslatorApp.Views
                 ["Английский"] = "en",
                 ["Немецкий"] = "de",
                 ["Французский"] = "fr",
-                ["Испанский"] = "es",
+                    ["Испанский"] = "es",
+                    ["Португальский"] = "pt",
             };
 
         /// <summary>
         /// Порядок совпадает с элементами ComboBox в MainWindow.axaml (оба списка языков одинаковые).
         /// </summary>
-        private static readonly string[] LanguageCodesByComboOrder = ["ru", "en", "de", "fr", "es"];
+        private static readonly string[] LanguageCodesByComboOrder = ["ru", "en", "de", "fr", "es", "pt"];
 
         public MainWindow()
         {

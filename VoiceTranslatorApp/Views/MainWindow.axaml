@@ -119,6 +119,7 @@
                                             <ComboBoxItem Content="Немецкий"/>
                                             <ComboBoxItem Content="Французский"/>
                                             <ComboBoxItem Content="Испанский"/>
+                                            <ComboBoxItem Content="Португальский"/>
                                         </ComboBox>
                                     </StackPanel>
 
@@ -140,6 +141,7 @@
                                             <ComboBoxItem Content="Немецкий"/>
                                             <ComboBoxItem Content="Французский"/>
                                             <ComboBoxItem Content="Испанский"/>
+                                            <ComboBoxItem Content="Португальский"/>
                                         </ComboBox>
                                     </StackPanel>
 
