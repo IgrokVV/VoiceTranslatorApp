@@ -30,10 +30,17 @@ namespace VoiceTranslatorApp.Views
         private string? _sessionRecordingPath;
         private long _sessionRecordedBytes;
         private readonly ITranslationService _translationService = new YandexTranslateService();
+        private readonly ITextToSpeechService _ttsService = new YandexTextToSpeechService();
+        private readonly AudioPlaybackService _audioPlaybackService = new AudioPlaybackService();
         private int _translateDebounceNonce;
         private string _sessionSourceLangCode = "ru";
         private string _sessionTargetLangCode = "en";
         private CancellationTokenSource? _periodicTranslateCts;
+        private CancellationTokenSource? _ttsPlaybackCts;
+        private readonly object _ttsSync = new();
+        private string? _selectedInputId;
+        private string _lastSpokenText = string.Empty;
+        private int _liveTtsNonce;
 
         private static readonly Dictionary<string, string> LanguageDisplayToCode =
             new(StringComparer.OrdinalIgnoreCase)
@@ -282,6 +289,8 @@ namespace VoiceTranslatorApp.Views
             _speechToTextService?.Stop();
             ReleaseSpeechToTextService();
             _translationService.Dispose();
+            _ttsService.Dispose();
+            _audioPlaybackService.Dispose();
             base.OnClosed(e);
         }
 
@@ -463,6 +472,36 @@ namespace VoiceTranslatorApp.Views
             ScheduleDebouncedTranslation(combinedText.Trim());
         }
 
+        // Обработчик кнопки «Озвучить перевод» — вызывает TTS и воспроизводит результат.
+        private async void PlayTranslationClicked(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var text = TranslatedTextTextBox.Text?.Trim();
+                if (string.IsNullOrEmpty(text))
+                {
+                    return;
+                }
+
+                // Простейший выбор голоса по коду языка. Подставьте нужные имена голосов.
+                var voice = _sessionTargetLangCode switch
+                {
+                    "ru" => "alena",
+                    "en" => "john",
+                    _ => null
+                };
+
+                var wav = await _ttsService.SynthesizeAsync(text, languageCode: _sessionTargetLangCode, voiceName: voice).ConfigureAwait(false);
+
+                // UI-поток нужен только для взаимодействия с контролами; проигрывание через NAudio — в фоновом.
+                await Dispatcher.UIThread.InvokeAsync(() => _audioPlaybackService.PlayWavBytes(wav));
+            }
+            catch (Exception ex)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => OriginalTextTextBox.Text = $"Ошибка TTS: {ex.Message}");
+            }
+        }
+
         private void ScheduleDebouncedTranslation(string trimmedForTranslate)
         {
             if (!_isTranslationRunning)
@@ -509,6 +548,38 @@ namespace VoiceTranslatorApp.Views
 
                         TranslatedTextTextBox.Text = translated;
                     });
+
+                    // Trigger live TTS playback for the latest nonce. Cancel previous playback.
+                    try
+                    {
+                        var cts = new CancellationTokenSource();
+                        lock (_ttsSync)
+                        {
+                            _ttsPlaybackCts?.Cancel();
+                            _ttsPlaybackCts?.Dispose();
+                            _ttsPlaybackCts = cts;
+                        }
+
+                        var voice = _sessionTargetLangCode switch
+                        {
+                            "ru" => "alena",
+                            "en" => "john",
+                            _ => null
+                        };
+
+                        var wav = await _ttsService.SynthesizeAsync(translated, _sessionTargetLangCode, voice, cts.Token).ConfigureAwait(false);
+
+                        if (cts.IsCancellationRequested || nonce != Volatile.Read(ref _translateDebounceNonce) || !_isTranslationRunning)
+                        {
+                            return;
+                        }
+
+                        await Dispatcher.UIThread.InvokeAsync(() => _audioPlaybackService.PlayWavBytes(wav));
+                    }
+                    catch
+                    {
+                        // ignore TTS errors during live playback
+                    }
                 }
                 catch (Exception ex)
                 {

@@ -225,21 +225,35 @@
                                 </Grid>
 
                                 <Grid Grid.Row="2" ColumnDefinitions="2*,6*,2*">
-                                    <Button x:Name="StartTranslationButton"
-                                            Grid.Column="1"
-                                            Click="StartTranslation"
-                                            Content="Начать перевод"
-                                            Background="#16A34A"
-                                            Foreground="White"
-                                            CornerRadius="12"
-                                            Height="56"
-                                            FontWeight="Bold"
-                                            FontSize="18"
-                                            HorizontalContentAlignment="Center"
-                                            VerticalContentAlignment="Center"
-                                            TextBlock.TextAlignment="Center"
-                                            HorizontalAlignment="Stretch"
-                                            VerticalAlignment="Bottom"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
+                                        <Button x:Name="StartTranslationButton"
+                                                Click="StartTranslation"
+                                                Content="Начать перевод"
+                                                Background="#16A34A"
+                                                Foreground="White"
+                                                CornerRadius="12"
+                                                Height="56"
+                                                Width="220"
+                                                FontWeight="Bold"
+                                                FontSize="18"
+                                                HorizontalContentAlignment="Center"
+                                                VerticalContentAlignment="Center"
+                                                TextBlock.TextAlignment="Center"/>
+
+                                        <Button x:Name="PlayTranslationButton"
+                                                Click="PlayTranslationClicked"
+                                                Content="Озвучить перевод"
+                                                Background="#2563EB"
+                                                Foreground="White"
+                                                CornerRadius="12"
+                                                Height="56"
+                                                Width="200"
+                                                FontWeight="Bold"
+                                                FontSize="16"
+                                                HorizontalContentAlignment="Center"
+                                                VerticalContentAlignment="Center"
+                                                TextBlock.TextAlignment="Center"/>
+                                    </StackPanel>
                                 </Grid>
                             </Grid>
                         </Border>

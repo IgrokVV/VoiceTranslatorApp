@@ -14,5 +14,5 @@ internal static class YandexTranslateLocal
     public const string FolderId = "b1gum8oejc2u2l9lfm13";
 
     // Your API key (example: "AQVN..." )
-    public const string ApiKey = "AQVNxBYLY9fO1VLwGZFJfDFolpp1n1qWadkhlJki";
+    public const string ApiKey = "AQVNxIAVLdVWcBB4pXcZz7XXjbbzkH6P-GmlI4_0";
 }
