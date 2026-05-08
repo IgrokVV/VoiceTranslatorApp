@@ -150,21 +150,12 @@ namespace VoiceTranslatorApp.Views
                 _sessionSourceLangCode = GetSelectedLanguageCode(SourceLanguageComboBox);
                 _sessionTargetLangCode = GetSelectedLanguageCode(TargetLanguageComboBox);
 
-                var voskModelDir = GetVoskModelDirectoryNameForSourceLanguage(_sessionSourceLangCode);
-                if (voskModelDir is null)
+                // Try to find a Vosk model folder for the selected source language.
+                var modelPath = FindVoskModelPathForLanguage(_sessionSourceLangCode);
+                if (modelPath is null || !Directory.Exists(modelPath))
                 {
                     _isTranslationRunning = false;
-                    OriginalTextTextBox.Text =
-                        "Распознавание речи для выбранного языка недоступно: в проекте есть только модели Vosk для русского и английского. " +
-                        "Выберите «Русский» или «Английский» в поле «С какого переводим».";
-                    return;
-                }
-
-                var modelPath = ResolveVoskModelPath(voskModelDir);
-                if (!Directory.Exists(modelPath))
-                {
-                    _isTranslationRunning = false;
-                    OriginalTextTextBox.Text = BuildModelNotFoundMessage(voskModelDir);
+                    OriginalTextTextBox.Text = BuildModelNotFoundMessageForLanguage(_sessionSourceLangCode);
                     return;
                 }
 
@@ -311,12 +302,50 @@ namespace VoiceTranslatorApp.Views
 
         private static string? GetVoskModelDirectoryNameForSourceLanguage(string sourceLanguageCode)
         {
+            // Kept for backward-compatibility but not used directly anymore.
             return sourceLanguageCode switch
             {
                 "ru" => VoskRuModelDir,
                 "en" => VoskEnModelDir,
                 _ => null,
             };
+        }
+
+        private static string? FindVoskModelPathForLanguage(string sourceLanguageCode)
+        {
+            // Map language codes to candidate model folder names. Add any extra
+            // models you place under the Models/ directory here.
+            var mapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["ru"] = VoskRuModelDir,
+                ["en"] = VoskEnModelDir,
+                // Add mappings for additional models placed under Models/.
+                ["de"] = "vosk-model-small-de-0.15",
+                ["fr"] = "vosk-model-small-fr-0.22",
+                // Spanish model in repository is 0.42
+                ["es"] = "vosk-model-small-es-0.42",
+                // Portuguese model
+                ["pt"] = "vosk-model-small-pt-0.3",
+            };
+
+            if (!mapping.TryGetValue(sourceLanguageCode, out var modelDir))
+            {
+                return null;
+            }
+
+            return GetModelPathCandidates(modelDir).FirstOrDefault(Directory.Exists)
+                   ?? Path.Combine(AppContext.BaseDirectory, "Models", modelDir);
+        }
+
+        private static string BuildModelNotFoundMessageForLanguage(string sourceLanguageCode)
+        {
+            var modelDir = GetVoskModelDirectoryNameForSourceLanguage(sourceLanguageCode) ?? sourceLanguageCode;
+            var candidatePaths = GetModelPathCandidates(modelDir).ToList();
+            var searchPaths = string.Join(Environment.NewLine, candidatePaths.Select(path => $"- {path}"));
+
+            return $"Ошибка распознавания: модель Vosk не найдена ({modelDir}).{Environment.NewLine}" +
+                   $"Положи модель в одну из папок:{Environment.NewLine}{searchPaths}{Environment.NewLine}" +
+                   "Или укажи путь через переменную окружения VOSK_MODEL_PATH.";
         }
 
         private void ReplaceSpeechToTextService(string modelPath)
