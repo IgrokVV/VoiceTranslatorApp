@@ -110,10 +110,22 @@ namespace VoiceTranslatorApp.Services
 
         private static string ExtractText(string json, string key)
         {
-            using var document = JsonDocument.Parse(json);
-            if (document.RootElement.TryGetProperty(key, out var valueElement))
+            if (string.IsNullOrWhiteSpace(json))
             {
-                return valueElement.GetString() ?? string.Empty;
+                return string.Empty;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                if (document.RootElement.TryGetProperty(key, out var valueElement))
+                {
+                    return valueElement.GetString() ?? string.Empty;
+                }
+            }
+            catch
+            {
+                // If parsing fails, don't throw — treat as no text.
             }
 
             return string.Empty;

@@ -65,6 +65,33 @@ namespace VoiceTranslatorApp.Views
             LoadAudioDevices();
         }
 
+        // Compute a segment of 'translated' that has not been spoken yet according to lastSpoken.
+        // If translated starts with lastSpoken, return the remainder (trimmed). If lastSpoken
+        // is not a prefix, return the full translated text to be safe.
+        private static string? ComputeUnspokenSegment(string lastSpoken, string translated)
+        {
+            var t = translated?.Trim();
+            if (string.IsNullOrEmpty(t))
+            {
+                return null;
+            }
+
+            var last = lastSpoken?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(last))
+            {
+                return t;
+            }
+
+            if (t.StartsWith(last, StringComparison.OrdinalIgnoreCase))
+            {
+                var remainder = t.Substring(last.Length).Trim();
+                return string.IsNullOrEmpty(remainder) ? null : remainder;
+            }
+
+            // Not a prefix — speak full text.
+            return t;
+        }
+
         private void LoadAudioDevices()
         {
             try
@@ -154,12 +181,17 @@ namespace VoiceTranslatorApp.Views
                 _recognizedPartialText = string.Empty;
                 OriginalTextTextBox.Text = string.Empty;
                 TranslatedTextTextBox.Text = string.Empty;
+                // Reset last spoken text when starting a new translation session so
+                // previously spoken parts are not considered.
+                _lastSpokenText = string.Empty;
 
                 _sessionSourceLangCode = GetSelectedLanguageCode(SourceLanguageComboBox);
                 _sessionTargetLangCode = GetSelectedLanguageCode(TargetLanguageComboBox);
 
                 // Try to find a Vosk model folder for the selected source language.
                 var modelPath = FindVoskModelPathForLanguage(_sessionSourceLangCode);
+                // Surface resolved model path for debugging.
+                Dispatcher.UIThread.Post(() => OriginalTextTextBox.Text = $"Используемая модель: {modelPath}");
                 if (modelPath is null || !Directory.Exists(modelPath))
                 {
                     _isTranslationRunning = false;
@@ -167,7 +199,16 @@ namespace VoiceTranslatorApp.Views
                     return;
                 }
 
-                ReplaceSpeechToTextService(modelPath);
+                try
+                {
+                    ReplaceSpeechToTextService(modelPath);
+                }
+                catch (Exception ex)
+                {
+                    _isTranslationRunning = false;
+                    OriginalTextTextBox.Text = $"Ошибка инициализации STT: {ex.Message}";
+                    return;
+                }
                 if (_speechToTextService is null)
                 {
                     _isTranslationRunning = false;
@@ -227,12 +268,16 @@ namespace VoiceTranslatorApp.Views
                                             {
                                                 try
                                                 {
-                                                    var cts = new CancellationTokenSource();
+                                                    string? toSpeak = null;
                                                     lock (_ttsSync)
                                                     {
-                                                        _ttsPlaybackCts?.Cancel();
-                                                        _ttsPlaybackCts?.Dispose();
-                                                        _ttsPlaybackCts = cts;
+                                                        toSpeak = ComputeUnspokenSegment(_lastSpokenText, translated);
+                                                    }
+
+                                                    if (toSpeak is null)
+                                                    {
+                                                        // Nothing new to speak
+                                                        return;
                                                     }
 
                                                     var voice = _sessionTargetLangCode switch
@@ -242,14 +287,23 @@ namespace VoiceTranslatorApp.Views
                                                         _ => null
                                                     };
 
-                                                    var wav = await _ttsService.SynthesizeAsync(translated, _sessionTargetLangCode, voice, cts.Token).ConfigureAwait(false);
+                                                    var wav = await _ttsService.SynthesizeAsync(toSpeak, _sessionTargetLangCode, voice, CancellationToken.None).ConfigureAwait(false);
 
-                                                    if (cts.IsCancellationRequested || !_isTranslationRunning)
+                                                    if (!_isTranslationRunning)
                                                     {
                                                         return;
                                                     }
 
-                                                    await Dispatcher.UIThread.InvokeAsync(() => _audioPlaybackService.PlayWavBytes(wav));
+                                                    await Dispatcher.UIThread.InvokeAsync(() =>
+                                                    {
+                                                        _audioPlaybackService.PlayWavBytes(wav, () =>
+                                                        {
+                                                            lock (_ttsSync)
+                                                            {
+                                                                _lastSpokenText = translated?.Trim() ?? string.Empty;
+                                                            }
+                                                        });
+                                                    });
                                                 }
                                                 catch
                                                 {
@@ -464,7 +518,22 @@ namespace VoiceTranslatorApp.Views
                 _sessionRecordedBytes += audioChunk.Length;
             }
 
-            _speechToTextService?.ProcessAudioChunk(audioChunk);
+            try
+            {
+                _speechToTextService?.ProcessAudioChunk(audioChunk);
+            }
+            catch (Exception ex)
+            {
+                // Surface recognition errors to the UI so the user can see why STT stopped.
+                try
+                {
+                    Dispatcher.UIThread.Post(() => OriginalTextTextBox.Text = $"Ошибка распознавания (runtime): {ex.Message}");
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
         }
 
         private void OnPartialTextUpdated(object? sender, string partialText)
@@ -560,29 +629,39 @@ namespace VoiceTranslatorApp.Views
                     // Trigger live TTS playback for the latest nonce. Cancel previous playback.
                     try
                     {
-                        var cts = new CancellationTokenSource();
+                        string? toSpeak = null;
                         lock (_ttsSync)
                         {
-                            _ttsPlaybackCts?.Cancel();
-                            _ttsPlaybackCts?.Dispose();
-                            _ttsPlaybackCts = cts;
+                            toSpeak = ComputeUnspokenSegment(_lastSpokenText, translated);
                         }
 
-                        var voice = _sessionTargetLangCode switch
+                        if (toSpeak is not null)
                         {
-                            "ru" => "alena",
-                            "en" => "john",
-                            _ => null
-                        };
+                            var voice = _sessionTargetLangCode switch
+                            {
+                                "ru" => "alena",
+                                "en" => "john",
+                                _ => null
+                            };
 
-                        var wav = await _ttsService.SynthesizeAsync(translated, _sessionTargetLangCode, voice, cts.Token).ConfigureAwait(false);
+                            var wav = await _ttsService.SynthesizeAsync(toSpeak, _sessionTargetLangCode, voice, CancellationToken.None).ConfigureAwait(false);
 
-                        if (cts.IsCancellationRequested || nonce != Volatile.Read(ref _translateDebounceNonce) || !_isTranslationRunning)
-                        {
-                            return;
+                            if (nonce != Volatile.Read(ref _translateDebounceNonce) || !_isTranslationRunning)
+                            {
+                                return;
+                            }
+
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
+                                _audioPlaybackService.PlayWavBytes(wav, () =>
+                                {
+                                    lock (_ttsSync)
+                                    {
+                                        _lastSpokenText = translated?.Trim() ?? string.Empty;
+                                    }
+                                });
+                            });
                         }
-
-                        await Dispatcher.UIThread.InvokeAsync(() => _audioPlaybackService.PlayWavBytes(wav));
                     }
                     catch (OperationCanceledException)
                     {
