@@ -99,8 +99,21 @@
                                 Padding="16"
                                 MinHeight="220"
                                 VerticalAlignment="Stretch">
-                            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="18">
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="16" RowDefinitions="Auto,Auto" RowSpacing="12">
+                            <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
+                                <Border Grid.Row="0"
+                                        Background="#1E293B"
+                                        BorderBrush="#334155"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="12,10">
+                                    <TextBlock x:Name="TranslationPhaseStatusTextBlock"
+                                               Text="Перевод не запущен. Выберите языки и нажмите «Начать перевод»."
+                                               Foreground="#E2E8F0"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               TextWrapping="Wrap"/>
+                                </Border>
+                                <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="16" RowDefinitions="Auto,Auto" RowSpacing="12">
                                     <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
                                         <TextBlock Text="С какого переводим"
                                                    Foreground="#CBD5E1"
@@ -176,7 +189,7 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <Grid Grid.Row="1" ColumnDefinitions="48*,4*,48*">
+                                <Grid Grid.Row="2" ColumnDefinitions="48*,4*,48*">
                                     <Grid Grid.Column="0" RowDefinitions="Auto,*" RowSpacing="8">
                                         <TextBlock Text="Оригинальный текст"
                                                    Foreground="#CBD5E1"
@@ -224,7 +237,7 @@
                                     </Grid>
                                 </Grid>
 
-                                <Grid Grid.Row="2" ColumnDefinitions="2*,6*,2*">
+                                <Grid Grid.Row="3" ColumnDefinitions="2*,6*,2*">
                                     <Grid Grid.Column="1" HorizontalAlignment="Center">
                                         <Button x:Name="StartTranslationButton"
                                                 Click="StartTranslation"
