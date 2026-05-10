@@ -33,10 +33,12 @@ namespace VoiceTranslatorApp.Views
         private readonly ITextToSpeechService _ttsService = new YandexTextToSpeechService();
         private readonly AudioPlaybackService _audioPlaybackService = new AudioPlaybackService();
         private int _translateDebounceNonce;
+        
         private string _sessionSourceLangCode = "ru";
         private string _sessionTargetLangCode = "en";
         private CancellationTokenSource? _periodicTranslateCts;
         private CancellationTokenSource? _ttsPlaybackCts;
+        private CancellationTokenSource? _inactivityCts;
         private readonly object _ttsSync = new();
         private string? _selectedInputId;
         private string _lastSpokenText = string.Empty;
@@ -63,6 +65,7 @@ namespace VoiceTranslatorApp.Views
             InitializeComponent();
             _voiceCaptureService.AudioChunkCaptured += OnAudioChunkCaptured;
             LoadAudioDevices();
+            // inactivity timer will be started when final text is updated
         }
 
         // Compute a segment of 'translated' that has not been spoken yet according to lastSpoken.
@@ -176,6 +179,7 @@ namespace VoiceTranslatorApp.Views
                     : null;
 
                 Interlocked.Increment(ref _translateDebounceNonce);
+            CancelInactivityTimer();
 
                 _recognizedFinalText.Clear();
                 _recognizedPartialText = string.Empty;
@@ -190,8 +194,7 @@ namespace VoiceTranslatorApp.Views
 
                 // Try to find a Vosk model folder for the selected source language.
                 var modelPath = FindVoskModelPathForLanguage(_sessionSourceLangCode);
-                // Surface resolved model path for debugging.
-                Dispatcher.UIThread.Post(() => OriginalTextTextBox.Text = $"Используемая модель: {modelPath}");
+                // Do not display the resolved model path in the UI at startup.
                 if (modelPath is null || !Directory.Exists(modelPath))
                 {
                     _isTranslationRunning = false;
@@ -371,6 +374,7 @@ namespace VoiceTranslatorApp.Views
         protected override void OnClosed(EventArgs e)
         {
             Interlocked.Increment(ref _translateDebounceNonce);
+            CancelInactivityTimer();
 
             _voiceCaptureService.Stop();
             SaveCapturedAudioRecording();
@@ -556,6 +560,8 @@ namespace VoiceTranslatorApp.Views
 
             _recognizedPartialText = string.Empty;
             UpdateOriginalTextBox();
+            // Start/reset inactivity timer when a final word arrives.
+            StartOrResetInactivityTimer();
         }
 
         private string BuildCombinedRecognizedText()
@@ -572,8 +578,62 @@ namespace VoiceTranslatorApp.Views
         {
             var combinedText = BuildCombinedRecognizedText();
 
+            // No-op: inactivity timer is started/reset only on final text updates.
             Dispatcher.UIThread.Post(() => OriginalTextTextBox.Text = combinedText);
             ScheduleDebouncedTranslation(combinedText.Trim());
+
+            // Schedule clearing of recognized text after 5 seconds of inactivity.
+            // Inactivity timer is handled by StartOrResetInactivityTimer when final words arrive.
+        }
+
+        private void StartOrResetInactivityTimer()
+        {
+            try
+            {
+                _inactivityCts?.Cancel();
+                _inactivityCts?.Dispose();
+            }
+            catch { }
+
+            _inactivityCts = new CancellationTokenSource();
+            var token = _inactivityCts.Token;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(5000, token).ConfigureAwait(false);
+                    if (token.IsCancellationRequested)
+                        return;
+
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        _recognizedFinalText.Clear();
+                        _recognizedPartialText = string.Empty;
+                        OriginalTextTextBox.Text = string.Empty;
+                        TranslatedTextTextBox.Text = string.Empty;
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    // cancelled by reset
+                }
+                catch
+                {
+                    // ignore
+                }
+            }, token);
+        }
+
+        private void CancelInactivityTimer()
+        {
+            try
+            {
+                _inactivityCts?.Cancel();
+                _inactivityCts?.Dispose();
+                _inactivityCts = null;
+            }
+            catch { }
         }
 
         // Обработчик кнопки «Озвучить перевод» — вызывает TTS и воспроизводит результат.
