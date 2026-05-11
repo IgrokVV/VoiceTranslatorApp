@@ -1,10 +1,12 @@
 using System;
+using System.Threading;
 using NAudio.Wave;
 
 namespace VoiceTranslatorApp.Services
 {
     public sealed class VoiceCaptureService : IVoiceCaptureService, IDisposable
     {
+        private readonly object _sync = new();
         private IWaveIn? _capture;
 
         public event EventHandler<byte[]>? AudioChunkCaptured;
@@ -13,33 +15,68 @@ namespace VoiceTranslatorApp.Services
 
         public void Start(string? inputDeviceId = null)
         {
-            if (IsCapturing)
+            lock (_sync)
             {
-                return;
-            }
+                if (IsCapturing || _capture is not null)
+                {
+                    return;
+                }
 
-            _capture = CreateCapture(inputDeviceId);
-            _capture.DataAvailable += OnDataAvailable;
-            _capture.RecordingStopped += OnRecordingStopped;
-            _capture.StartRecording();
-            IsCapturing = true;
+                _capture = CreateCapture(inputDeviceId);
+                _capture.DataAvailable += OnDataAvailable;
+                _capture.RecordingStopped += OnRecordingStopped;
+                _capture.StartRecording();
+                IsCapturing = true;
+            }
         }
 
         public void Stop()
         {
-            if (!IsCapturing)
+            IWaveIn? cap;
+            lock (_sync)
             {
-                return;
+                if (!IsCapturing || _capture is null)
+                {
+                    return;
+                }
+
+                cap = _capture;
             }
 
-            _capture?.StopRecording();
-            ReleaseCapture();
-            IsCapturing = false;
+            try
+            {
+                cap.StopRecording();
+            }
+            catch
+            {
+                lock (_sync)
+                {
+                    ReleaseCaptureLocked();
+                }
+            }
         }
 
         public void Dispose()
         {
             Stop();
+
+            for (var i = 0; i < 250; i++)
+            {
+                lock (_sync)
+                {
+                    if (_capture is null)
+                    {
+                        return;
+                    }
+                }
+
+                Thread.Sleep(20);
+            }
+
+            lock (_sync)
+            {
+                ReleaseCaptureLocked();
+            }
         }
 
         private static IWaveIn CreateCapture(string? inputDeviceId)
@@ -47,7 +84,7 @@ namespace VoiceTranslatorApp.Services
             var capture = new WaveInEvent
             {
                 WaveFormat = new WaveFormat(16000, 1),
-                BufferMilliseconds = 100
+                BufferMilliseconds = 100,
             };
 
             if (string.IsNullOrWhiteSpace(inputDeviceId))
@@ -55,8 +92,6 @@ namespace VoiceTranslatorApp.Services
                 return capture;
             }
 
-            // We use WaveInEvent for consistent PCM 16k mono chunks required by Vosk.
-            // inputDeviceId currently contains friendly device name from UI mapping.
             var requestedName = inputDeviceId.Trim();
             for (var i = 0; i < WaveInEvent.DeviceCount; i++)
             {
@@ -78,18 +113,30 @@ namespace VoiceTranslatorApp.Services
                 return;
             }
 
-            var audioChunk = new byte[e.BytesRecorded];
-            Array.Copy(e.Buffer, audioChunk, e.BytesRecorded);
+            var n = e.BytesRecorded;
+            var audioChunk = new byte[n];
+            Array.Copy(e.Buffer, audioChunk, n);
+
+            lock (_sync)
+            {
+                if (_capture is null || !IsCapturing)
+                {
+                    return;
+                }
+            }
+
             AudioChunkCaptured?.Invoke(this, audioChunk);
         }
 
         private void OnRecordingStopped(object? sender, StoppedEventArgs e)
         {
-            ReleaseCapture();
-            IsCapturing = false;
+            lock (_sync)
+            {
+                ReleaseCaptureLocked();
+            }
         }
 
-        private void ReleaseCapture()
+        private void ReleaseCaptureLocked()
         {
             if (_capture is null)
             {
@@ -98,8 +145,16 @@ namespace VoiceTranslatorApp.Services
 
             _capture.DataAvailable -= OnDataAvailable;
             _capture.RecordingStopped -= OnRecordingStopped;
-            _capture.Dispose();
+            try
+            {
+                _capture.Dispose();
+            }
+            catch
+            {
+            }
+
             _capture = null;
+            IsCapturing = false;
         }
     }
 }

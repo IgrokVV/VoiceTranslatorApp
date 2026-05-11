@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
@@ -31,7 +32,11 @@ namespace VoiceTranslatorApp.Services
             _apiKey = ResolveApiKey();
         }
 
-        public async Task<byte[]> SynthesizeAsync(string text, string languageCode, string? voiceName = null, CancellationToken cancellationToken = default)
+        public async Task<byte[]> SynthesizeAsync(
+            string text,
+            string languageCode,
+            TextToSpeechSynthesisOptions? options = null,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -40,7 +45,7 @@ namespace VoiceTranslatorApp.Services
 
             if (string.IsNullOrWhiteSpace(_apiKey))
             {
-                throw new InvalidOperationException("Yandex TTS: отсутствует API key. Установите переменную YANDEX_API_KEY / YC_API_KEY или заполните YandexTranslateLocal.ApiKey.");
+                throw new InvalidOperationException("Yandex TTS: РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ API key. РЈСЃС‚Р°РЅРѕРІРёС‚Рµ РїРµСЂРµРјРµРЅРЅСѓСЋ YANDEX_API_KEY / YC_API_KEY РёР»Рё Р·Р°РїРѕР»РЅРёС‚Рµ YandexTranslateLocal.ApiKey.");
             }
 
             using var request = new HttpRequestMessage(HttpMethod.Post, DefaultEndpoint);
@@ -48,16 +53,22 @@ namespace VoiceTranslatorApp.Services
 
             // Yandex TTS may not accept "wav" format parameter in this endpoint for some configurations.
             // Request raw PCM (lpcm) and wrap into WAV container if necessary.
+            options ??= TextToSpeechSynthesisOptions.Default;
+            var sampleRate = options.SampleRateHertz <= 0 ? 16000 : options.SampleRateHertz;
+
             var form = new Dictionary<string, string>
             {
                 ["text"] = text,
+                ["lang"] = languageCode,
                 ["format"] = "lpcm",
-                ["sampleRateHertz"] = "16000"
+                ["sampleRateHertz"] = sampleRate.ToString(CultureInfo.InvariantCulture),
             };
 
-            if (!string.IsNullOrWhiteSpace(voiceName))
+            var model = options.Model;
+
+            if (model is not null && model.Speed > 0 && Math.Abs(model.Speed - 1.0) > 0.0001)
             {
-                form["voice"] = voiceName!;
+                form["speed"] = model.Speed.ToString("0.0##", CultureInfo.InvariantCulture);
             }
 
             request.Content = new FormUrlEncodedContent(form);
@@ -75,13 +86,23 @@ namespace VoiceTranslatorApp.Services
             // If response already contains WAV (RIFF header), return as-is.
             if (bytes.Length >= 4 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F')
             {
+                if (model is not null)
+                {
+                    return TtsWavPostProcessor.Apply(bytes, model.PitchSemitones, model.LinearGain);
+                }
+
                 return bytes;
             }
 
             // Otherwise assume raw PCM (16-bit little-endian) and wrap into WAV container with requested sample rate.
             try
             {
-                var wav = CreateWavFromPcm(bytes, sampleRateHertz: 16000, bitsPerSample: 16, channels: 1);
+                var wav = CreateWavFromPcm(bytes, sampleRateHertz: sampleRate, bitsPerSample: 16, channels: 1);
+                if (model is not null)
+                {
+                    return TtsWavPostProcessor.Apply(wav, model.PitchSemitones, model.LinearGain);
+                }
+
                 return wav;
             }
             catch

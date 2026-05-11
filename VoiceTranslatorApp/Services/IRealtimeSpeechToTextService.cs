@@ -11,6 +11,10 @@ namespace VoiceTranslatorApp.Services
 
         void Start();
         void ProcessAudioChunk(byte[] audioChunk);
+
+        /// <summary>Сбрасывает состояние распознавателя без выгрузки модели (новая фраза).</summary>
+        void ResetRecognitionSession();
+
         void Stop();
     }
 }

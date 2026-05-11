@@ -44,6 +44,20 @@ namespace VoiceTranslatorApp.Services
             }
         }
 
+        public void ResetRecognitionSession()
+        {
+            lock (_sync)
+            {
+                if (!IsRunning || _model is null)
+                {
+                    return;
+                }
+
+                _recognizer?.Dispose();
+                _recognizer = new VoskRecognizer(_model, 16000.0f);
+            }
+        }
+
         public void ProcessAudioChunk(byte[] audioChunk)
         {
             if (audioChunk.Length == 0)
