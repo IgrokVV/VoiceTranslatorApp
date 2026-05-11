@@ -6,9 +6,13 @@ namespace VoiceTranslatorApp.Services
     public interface ITextToSpeechService : System.IDisposable
     {
         /// <summary>
-        /// Возвращает WAV-данные (байты). languageCode — например "ru-RU" или "en-US" в зависимости от голоса.
-        /// voiceName — необязательно.
+        /// Р’РѕР·РІСЂР°С‰Р°РµС‚ WAV-РґР°РЅРЅС‹Рµ (Р±Р°Р№С‚С‹). languageCode вЂ” РЅР°РїСЂРёРјРµСЂ "ru-RU" РёР»Рё "en-US" РІ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕС‚ РіРѕР»РѕСЃР°.
+        /// options вЂ” РїРѕР»СЊР·РѕРІР°С‚РµР»СЊСЃРєРёРµ РЅР°СЃС‚СЂРѕР№РєРё/В«РјРѕРґРµР»СЊ РіРѕР»РѕСЃР°В» (РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ).
         /// </summary>
-        Task<byte[]> SynthesizeAsync(string text, string languageCode, string? voiceName = null, CancellationToken cancellationToken = default);
+        Task<byte[]> SynthesizeAsync(
+            string text,
+            string languageCode,
+            TextToSpeechSynthesisOptions? options = null,
+            CancellationToken cancellationToken = default);
     }
 }

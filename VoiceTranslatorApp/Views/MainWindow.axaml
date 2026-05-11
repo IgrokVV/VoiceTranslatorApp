@@ -71,7 +71,7 @@
                     <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
                         <TextBlock Text="Голосовые модели" FontSize="24" FontWeight="Bold" Foreground="White"/>
                         <TextBlock Grid.Row="1"
-                                   Text="Раздел для управления голосовыми моделями."
+                                   Text="Настройте скорость в облаке и тон/громкость локально — ползунки ниже сразу слышны в превью."
                                    TextWrapping="Wrap"
                                    Foreground="#94A3B8"/>
                         <Border Grid.Row="2"
@@ -79,8 +79,192 @@
                                 BorderBrush="#1E293B"
                                 BorderThickness="1"
                                 CornerRadius="12"
+                                Padding="16"
                                 MinHeight="220"
-                                VerticalAlignment="Stretch"/>
+                                VerticalAlignment="Stretch">
+                            <Grid ColumnDefinitions="3*,7*" ColumnSpacing="16">
+                                <Border Background="#0B1220"
+                                        BorderBrush="#1E293B"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="12">
+                                    <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+                                        <TextBlock Text="Список моделей"
+                                                   Foreground="#E2E8F0"
+                                                   FontWeight="SemiBold"/>
+
+                                        <ListBox x:Name="VoiceModelsListBox"
+                                                 Grid.Row="1"
+                                                 Background="#111827"
+                                                 BorderBrush="#334155"
+                                                 BorderThickness="1"
+                                                 CornerRadius="8"
+                                                 Padding="8"
+                                                 Foreground="#E2E8F0"/>
+
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+                                            <Button x:Name="NewVoiceModelButton"
+                                                    Click="NewVoiceModel"
+                                                    Background="#2563EB"
+                                                    Foreground="White"
+                                                    CornerRadius="8"
+                                                    Padding="10,8"
+                                                    FontWeight="SemiBold"
+                                                    Content="Новая"/>
+                                            <Button x:Name="DeleteVoiceModelButton"
+                                                    Click="DeleteVoiceModel"
+                                                    Background="#DC2626"
+                                                    Foreground="White"
+                                                    CornerRadius="8"
+                                                    Padding="10,8"
+                                                    FontWeight="SemiBold"
+                                                    Content="Удалить"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Column="1"
+                                        Background="#0B1220"
+                                        BorderBrush="#1E293B"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="12">
+                                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" RowSpacing="10">
+                                        <TextBlock Grid.Row="0"
+                                                   Text="Параметры модели"
+                                                   Foreground="#E2E8F0"
+                                                   FontWeight="SemiBold"/>
+
+                                        <StackPanel Grid.Row="1" Spacing="6">
+                                            <TextBlock Text="Название"
+                                                       Foreground="#CBD5E1"
+                                                       FontSize="14"/>
+                                            <TextBox x:Name="VoiceModelNameTextBox"
+                                                     Background="#111827"
+                                                     Foreground="#E2E8F0"
+                                                     BorderBrush="#334155"
+                                                     BorderThickness="1"
+                                                     CornerRadius="8"
+                                                     Padding="12,10"
+                                                     Watermark="Например: Мой спокойный голос"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="2" Spacing="6">
+                                            <TextBlock Text="Скорость речи (Yandex)"
+                                                       Foreground="#CBD5E1"
+                                                       FontSize="14"/>
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                                <Slider x:Name="VoiceModelSpeedSlider"
+                                                        Minimum="0.5"
+                                                        Maximum="2.0"
+                                                        Value="1.0"
+                                                        TickFrequency="0.1"
+                                                        IsSnapToTickEnabled="True"/>
+                                                <TextBlock x:Name="VoiceModelSpeedValueTextBlock"
+                                                           Grid.Column="1"
+                                                           Text="1.0"
+                                                           Foreground="#E2E8F0"
+                                                           VerticalAlignment="Center"
+                                                           FontWeight="SemiBold"/>
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="3" Spacing="6">
+                                            <TextBlock Text="Тон (высота, полутоны)"
+                                                       Foreground="#CBD5E1"
+                                                       FontSize="14"/>
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                                <Slider x:Name="VoiceModelPitchSlider"
+                                                        Minimum="-6"
+                                                        Maximum="6"
+                                                        Value="0"
+                                                        TickFrequency="0.5"
+                                                        IsSnapToTickEnabled="True"/>
+                                                <TextBlock x:Name="VoiceModelPitchValueTextBlock"
+                                                           Grid.Column="1"
+                                                           Text="0"
+                                                           Foreground="#E2E8F0"
+                                                           VerticalAlignment="Center"
+                                                           FontWeight="SemiBold"
+                                                           MinWidth="36"
+                                                           TextAlignment="Right"/>
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="4" Spacing="6">
+                                            <TextBlock Text="Громкость"
+                                                       Foreground="#CBD5E1"
+                                                       FontSize="14"/>
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                                <Slider x:Name="VoiceModelGainSlider"
+                                                        Minimum="0.25"
+                                                        Maximum="2.0"
+                                                        Value="1.0"
+                                                        TickFrequency="0.05"
+                                                        IsSnapToTickEnabled="True"/>
+                                                <TextBlock x:Name="VoiceModelGainValueTextBlock"
+                                                           Grid.Column="1"
+                                                           Text="1.00"
+                                                           Foreground="#E2E8F0"
+                                                           VerticalAlignment="Center"
+                                                           FontWeight="SemiBold"
+                                                           MinWidth="44"
+                                                           TextAlignment="Right"/>
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Row="5"
+                                                   Text="Тон и громкость применяются к уже полученному звуку на этом компьютере (не параметры Yandex API)."
+                                                   TextWrapping="Wrap"
+                                                   Foreground="#64748B"
+                                                   FontSize="12"/>
+
+                                        <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="8">
+                                            <Button x:Name="SaveVoiceModelButton"
+                                                    Click="SaveVoiceModel"
+                                                    Background="#16A34A"
+                                                    Foreground="White"
+                                                    CornerRadius="8"
+                                                    Padding="12,10"
+                                                    FontWeight="SemiBold"
+                                                    Content="Сохранить"/>
+                                            <Button x:Name="PreviewVoiceModelButton"
+                                                    Click="PreviewVoiceModel"
+                                                    Background="#1E293B"
+                                                    Foreground="#E2E8F0"
+                                                    BorderBrush="#334155"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8"
+                                                    Padding="12,10"
+                                                    FontWeight="SemiBold"
+                                                    Content="Прослушать"/>
+                                        </StackPanel>
+
+                                        <Grid Grid.Row="7" RowDefinitions="Auto,*" MinHeight="0">
+                                            <TextBlock Text="Текст для прослушивания"
+                                                       Foreground="#CBD5E1"
+                                                       FontSize="14"/>
+                                            <TextBox x:Name="VoiceModelPreviewTextBox"
+                                                     Grid.Row="1"
+                                                     AcceptsReturn="True"
+                                                     MinHeight="0"
+                                                     VerticalAlignment="Stretch"
+                                                     VerticalContentAlignment="Top"
+                                                     Text="Привет! Это тест вашего голосового пресета для озвучки перевода."
+                                                     Background="#111827"
+                                                     Foreground="#E2E8F0"
+                                                     BorderBrush="#334155"
+                                                     BorderThickness="1"
+                                                     CornerRadius="8"
+                                                     Padding="12"
+                                                     TextWrapping="Wrap"
+                                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Border>
                     </Grid>
                 </Grid>
 

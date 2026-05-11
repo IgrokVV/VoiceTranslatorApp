@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using VoiceTranslatorApp.Services;
@@ -69,6 +70,10 @@ namespace VoiceTranslatorApp.Views
         /// <summary>Vosk шлёт PartialTextUpdated почти на каждый чанк — таймер тишины сбрасываем только при смене текста.</summary>
         private string _lastCombinedTextForSilence = string.Empty;
 
+        private readonly TextToSpeechVoiceModelStore _voiceModelStore = new();
+        private readonly List<TextToSpeechVoiceModel> _voiceModels = new();
+        private TextToSpeechVoiceModel? _selectedVoiceModel;
+
         private static readonly Dictionary<string, string> LanguageDisplayToCode =
             new(StringComparer.OrdinalIgnoreCase)
             {
@@ -91,6 +96,91 @@ namespace VoiceTranslatorApp.Views
             _voiceCaptureService.AudioChunkCaptured += OnAudioChunkCaptured;
             LoadAudioDevices();
             SetTranslationPhaseStatus(StatusIdle);
+
+            InitializeVoiceModelsUi();
+        }
+
+        private void InitializeVoiceModelsUi()
+        {
+            try
+            {
+                _voiceModels.Clear();
+                _voiceModels.AddRange(_voiceModelStore.Load());
+
+                if (_voiceModels.Count == 0)
+                {
+                    _voiceModels.Add(new TextToSpeechVoiceModel
+                    {
+                        Name = "По умолчанию",
+                        Speed = 1.0,
+                        PitchSemitones = 0,
+                        LinearGain = 1.0,
+                    });
+                }
+
+                VoiceModelsListBox.ItemsSource = _voiceModels;
+                VoiceModelsListBox.SelectionChanged += (_, _) => LoadSelectedVoiceModelIntoEditor();
+
+                VoiceModelSpeedSlider.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property.Name == nameof(Slider.Value))
+                    {
+                        VoiceModelSpeedValueTextBlock.Text = $"{VoiceModelSpeedSlider.Value:0.0}";
+                    }
+                };
+
+                VoiceModelPitchSlider.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property.Name == nameof(Slider.Value))
+                    {
+                        VoiceModelPitchValueTextBlock.Text = $"{VoiceModelPitchSlider.Value:0.#}";
+                    }
+                };
+
+                VoiceModelGainSlider.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property.Name == nameof(Slider.Value))
+                    {
+                        VoiceModelGainValueTextBlock.Text = $"{VoiceModelGainSlider.Value:0.00}";
+                    }
+                };
+
+                VoiceModelsListBox.SelectedIndex = 0;
+                LoadSelectedVoiceModelIntoEditor();
+            }
+            catch
+            {
+            }
+        }
+
+        private void LoadSelectedVoiceModelIntoEditor()
+        {
+            if (VoiceModelsListBox.SelectedItem is not TextToSpeechVoiceModel model)
+            {
+                _selectedVoiceModel = null;
+                return;
+            }
+
+            _selectedVoiceModel = model;
+            VoiceModelNameTextBox.Text = model.Name;
+
+            var speed = model.Speed;
+            if (double.IsNaN(speed) || speed <= 0) speed = 1.0;
+            speed = Math.Clamp(speed, 0.5, 2.0);
+            VoiceModelSpeedSlider.Value = speed;
+            VoiceModelSpeedValueTextBlock.Text = $"{speed:0.0}";
+
+            var pitch = model.PitchSemitones;
+            if (double.IsNaN(pitch)) pitch = 0;
+            pitch = Math.Clamp(pitch, -6.0, 6.0);
+            VoiceModelPitchSlider.Value = pitch;
+            VoiceModelPitchValueTextBlock.Text = $"{pitch:0.#}";
+
+            var gain = model.LinearGain;
+            if (double.IsNaN(gain) || gain <= 0) gain = 1.0;
+            gain = Math.Clamp(gain, 0.25, 2.0);
+            VoiceModelGainSlider.Value = gain;
+            VoiceModelGainValueTextBlock.Text = $"{gain:0.00}";
         }
 
         private void SetTranslationPhaseStatus(string message)
@@ -180,6 +270,155 @@ namespace VoiceTranslatorApp.Views
             TranslationButton.Foreground = Brushes.White;
             VoiceModelsButton.Background = new SolidColorBrush(Color.Parse("#1E293B"));
             VoiceModelsButton.Foreground = new SolidColorBrush(Color.Parse("#E2E8F0"));
+        }
+
+        private void NewVoiceModel(object? sender, RoutedEventArgs e)
+        {
+            var baseName = "Новая модель";
+            var index = 1;
+            var name = baseName;
+            while (_voiceModels.Any(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                index++;
+                name = $"{baseName} {index}";
+            }
+
+            var model = new TextToSpeechVoiceModel
+            {
+                Name = name,
+                Speed = 1.0,
+                PitchSemitones = 0,
+                LinearGain = 1.0,
+            };
+
+            _voiceModels.Add(model);
+            RefreshVoiceModelsListAndSelect(model);
+        }
+
+        private void DeleteVoiceModel(object? sender, RoutedEventArgs e)
+        {
+            if (VoiceModelsListBox.SelectedItem is not TextToSpeechVoiceModel model)
+            {
+                return;
+            }
+
+            if (_voiceModels.Count <= 1)
+            {
+                return;
+            }
+
+            var idx = _voiceModels.IndexOf(model);
+            if (idx < 0)
+            {
+                return;
+            }
+
+            _voiceModels.RemoveAt(idx);
+            RefreshVoiceModelsListAndSelect(_voiceModels[Math.Clamp(idx - 1, 0, _voiceModels.Count - 1)]);
+            PersistVoiceModels();
+        }
+
+        private void SaveVoiceModel(object? sender, RoutedEventArgs e)
+        {
+            if (VoiceModelsListBox.SelectedItem is not TextToSpeechVoiceModel oldModel)
+            {
+                return;
+            }
+
+            var name = (VoiceModelNameTextBox.Text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = "Без названия";
+            }
+            name = Regex.Replace(name, @"[\r\n\t]+", " ").Trim();
+
+            var speed = Math.Clamp(VoiceModelSpeedSlider.Value, 0.5, 2.0);
+            var pitch = Math.Clamp(VoiceModelPitchSlider.Value, -6.0, 6.0);
+            var gain = Math.Clamp(VoiceModelGainSlider.Value, 0.25, 2.0);
+
+            var newModel = oldModel with
+            {
+                Name = name,
+                Speed = speed,
+                PitchSemitones = pitch,
+                LinearGain = gain,
+            };
+
+            var idx = _voiceModels.IndexOf(oldModel);
+            if (idx >= 0)
+            {
+                _voiceModels[idx] = newModel;
+            }
+
+            _selectedVoiceModel = newModel;
+            RefreshVoiceModelsListAndSelect(newModel);
+            PersistVoiceModels();
+        }
+
+        private async void PreviewVoiceModel(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var text = (VoiceModelPreviewTextBox.Text ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    return;
+                }
+
+                var model = BuildVoiceModelFromEditor();
+                var options = new TextToSpeechSynthesisOptions { Model = model, SampleRateHertz = 16000 };
+
+                var lang = GetSelectedLanguageCode(TargetLanguageComboBox);
+                var yandexLang = MapToYandexTtsLanguage(lang);
+
+                var wav = await _ttsService.SynthesizeAsync(text, yandexLang, options, CancellationToken.None).ConfigureAwait(false);
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    // У playback в текущей реализации выбор устройства может быть зашит внутри; оставляем как есть.
+                    _audioPlaybackService.PlayWavBytes(wav, () => { });
+                });
+            }
+            catch (Exception ex)
+            {
+                SetTranslationPhaseStatus($"Ошибка превью голоса: {ex.Message}");
+            }
+        }
+
+        private TextToSpeechVoiceModel BuildVoiceModelFromEditor()
+        {
+            var name = (VoiceModelNameTextBox.Text ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name)) name = "Без названия";
+
+            var speed = Math.Clamp(VoiceModelSpeedSlider.Value, 0.5, 2.0);
+            var pitch = Math.Clamp(VoiceModelPitchSlider.Value, -6.0, 6.0);
+            var gain = Math.Clamp(VoiceModelGainSlider.Value, 0.25, 2.0);
+
+            return new TextToSpeechVoiceModel
+            {
+                Name = name,
+                Speed = speed,
+                PitchSemitones = pitch,
+                LinearGain = gain,
+            };
+        }
+
+        private void RefreshVoiceModelsListAndSelect(TextToSpeechVoiceModel model)
+        {
+            VoiceModelsListBox.ItemsSource = null;
+            VoiceModelsListBox.ItemsSource = _voiceModels;
+            VoiceModelsListBox.SelectedItem = model;
+        }
+
+        private void PersistVoiceModels()
+        {
+            try
+            {
+                _voiceModelStore.Save(_voiceModels);
+            }
+            catch
+            {
+            }
         }
 
         private void StartTranslation(object? sender, RoutedEventArgs e)
@@ -635,15 +874,14 @@ namespace VoiceTranslatorApp.Views
             byte[] wav;
             try
             {
-                var voice = _sessionTargetLangCode switch
-                {
-                    "ru" => "alena",
-                    "en" => "john",
-                    _ => null,
-                };
+                var model = _selectedVoiceModel ?? BuildVoiceModelFromEditor();
+                var options = new TextToSpeechSynthesisOptions { Model = model, SampleRateHertz = 16000 };
 
-                wav = await _ttsService
-                    .SynthesizeAsync(translated, _sessionTargetLangCode, voice, CancellationToken.None)
+                wav = await _ttsService.SynthesizeAsync(
+                        translated,
+                        MapToYandexTtsLanguage(_sessionTargetLangCode),
+                        options,
+                        CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch
@@ -764,6 +1002,20 @@ namespace VoiceTranslatorApp.Views
             }
 
             return "ru";
+        }
+
+        private static string MapToYandexTtsLanguage(string shortLangCode)
+        {
+            return shortLangCode switch
+            {
+                "ru" => "ru-RU",
+                "en" => "en-US",
+                "de" => "de-DE",
+                "fr" => "fr-FR",
+                "es" => "es-ES",
+                "pt" => "pt-PT",
+                _ => shortLangCode
+            };
         }
 
         private void SetTranslationLanguageSelectorsEnabled(bool isEnabled)
