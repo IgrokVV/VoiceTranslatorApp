@@ -25,7 +25,7 @@ namespace VoiceTranslatorApp.Views
         }
 
         private const string StatusIdle =
-            "Перевод не запущен. Выберите языки и нажмите «Начать перевод».";
+            "Перевод не запущен. Выберите языки, модель озвучки и нажмите «Начать перевод».";
 
         private const string StatusStep1Recognizing =
             "Шаг 1. Распознавание: говорите в микрофон — речь отображается в поле «Оригинальный текст».";
@@ -147,10 +147,59 @@ namespace VoiceTranslatorApp.Views
 
                 VoiceModelsListBox.SelectedIndex = 0;
                 LoadSelectedVoiceModelIntoEditor();
+                RefreshTranslationVoiceModelCombo();
             }
             catch
             {
             }
+        }
+
+        /// <summary>Список моделей для панели «Перевод»; сохраняет выбор по имени при обновлении.</summary>
+        private void RefreshTranslationVoiceModelCombo()
+        {
+            var previousName = (TranslationVoiceModelComboBox.SelectedItem as TextToSpeechVoiceModel)?.Name;
+
+            TranslationVoiceModelComboBox.ItemsSource = null;
+            TranslationVoiceModelComboBox.ItemsSource = _voiceModels;
+
+            if (_voiceModels.Count == 0)
+            {
+                TranslationVoiceModelComboBox.SelectedIndex = -1;
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(previousName))
+            {
+                var match = _voiceModels.FirstOrDefault(m => m.Name == previousName);
+                if (match is not null)
+                {
+                    TranslationVoiceModelComboBox.SelectedItem = match;
+                    return;
+                }
+            }
+
+            TranslationVoiceModelComboBox.SelectedIndex = 0;
+        }
+
+        private TextToSpeechVoiceModel GetVoiceModelForTranslationTts()
+        {
+            if (TranslationVoiceModelComboBox.SelectedItem is TextToSpeechVoiceModel m)
+            {
+                return m;
+            }
+
+            if (_voiceModels.Count > 0)
+            {
+                return _voiceModels[0];
+            }
+
+            return new TextToSpeechVoiceModel
+            {
+                Name = "По умолчанию",
+                Speed = 1.0,
+                PitchSemitones = 0,
+                LinearGain = 1.0,
+            };
         }
 
         private void LoadSelectedVoiceModelIntoEditor()
@@ -270,6 +319,16 @@ namespace VoiceTranslatorApp.Views
             TranslationButton.Foreground = Brushes.White;
             VoiceModelsButton.Background = new SolidColorBrush(Color.Parse("#1E293B"));
             VoiceModelsButton.Foreground = new SolidColorBrush(Color.Parse("#E2E8F0"));
+
+            if (_selectedVoiceModel is not null)
+            {
+                var edited = _voiceModels.FirstOrDefault(m => ReferenceEquals(m, _selectedVoiceModel))
+                    ?? _voiceModels.FirstOrDefault(m => m.Name == _selectedVoiceModel.Name);
+                if (edited is not null)
+                {
+                    TranslationVoiceModelComboBox.SelectedItem = edited;
+                }
+            }
         }
 
         private void NewVoiceModel(object? sender, RoutedEventArgs e)
@@ -293,6 +352,7 @@ namespace VoiceTranslatorApp.Views
 
             _voiceModels.Add(model);
             RefreshVoiceModelsListAndSelect(model);
+            TranslationVoiceModelComboBox.SelectedItem = model;
         }
 
         private void DeleteVoiceModel(object? sender, RoutedEventArgs e)
@@ -408,6 +468,7 @@ namespace VoiceTranslatorApp.Views
             VoiceModelsListBox.ItemsSource = null;
             VoiceModelsListBox.ItemsSource = _voiceModels;
             VoiceModelsListBox.SelectedItem = model;
+            RefreshTranslationVoiceModelCombo();
         }
 
         private void PersistVoiceModels()
@@ -874,7 +935,7 @@ namespace VoiceTranslatorApp.Views
             byte[] wav;
             try
             {
-                var model = _selectedVoiceModel ?? BuildVoiceModelFromEditor();
+                var model = GetVoiceModelForTranslationTts();
                 var options = new TextToSpeechSynthesisOptions { Model = model, SampleRateHertz = 16000 };
 
                 wav = await _ttsService.SynthesizeAsync(
@@ -1022,6 +1083,7 @@ namespace VoiceTranslatorApp.Views
         {
             SourceLanguageComboBox.IsEnabled = isEnabled;
             TargetLanguageComboBox.IsEnabled = isEnabled;
+            TranslationVoiceModelComboBox.IsEnabled = isEnabled;
         }
 
         private void SaveCapturedAudioRecording()

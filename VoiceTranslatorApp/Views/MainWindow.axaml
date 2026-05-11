@@ -272,7 +272,7 @@
                     <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
                         <TextBlock Text="Перевод" FontSize="24" FontWeight="Bold" Foreground="White"/>
                         <TextBlock Grid.Row="1"
-                                   Text="Раздел для перевода и подготовки текста."
+                                   Text="Выберите языки, модель озвучки и устройства, затем нажмите «Начать перевод»."
                                    TextWrapping="Wrap"
                                    Foreground="#94A3B8"/>
                         <Border Grid.Row="2"
@@ -291,14 +291,28 @@
                                         CornerRadius="10"
                                         Padding="12,10">
                                     <TextBlock x:Name="TranslationPhaseStatusTextBlock"
-                                               Text="Перевод не запущен. Выберите языки и нажмите «Начать перевод»."
+                                               Text="Перевод не запущен. Выберите языки, модель озвучки и нажмите «Начать перевод»."
                                                Foreground="#E2E8F0"
                                                FontSize="14"
                                                FontWeight="SemiBold"
                                                TextWrapping="Wrap"/>
                                 </Border>
-                                <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="16" RowDefinitions="Auto,Auto" RowSpacing="12">
-                                    <StackPanel Grid.Row="0" Grid.Column="0" Spacing="8">
+                                <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="16" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+                                    <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Spacing="8">
+                                        <TextBlock Text="Модель озвучки"
+                                                   Foreground="#CBD5E1"
+                                                   FontSize="14"/>
+                                        <ComboBox x:Name="TranslationVoiceModelComboBox"
+                                                  Background="#111827"
+                                                  Foreground="#E2E8F0"
+                                                  BorderBrush="#334155"
+                                                  BorderThickness="1"
+                                                  CornerRadius="8"
+                                                  Padding="12,10"
+                                                  HorizontalAlignment="Stretch"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="8">
                                         <TextBlock Text="С какого переводим"
                                                    Foreground="#CBD5E1"
                                                    FontSize="14"/>
@@ -320,7 +334,7 @@
                                         </ComboBox>
                                     </StackPanel>
 
-                                    <StackPanel Grid.Row="0" Grid.Column="1" Spacing="8">
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="8">
                                         <TextBlock Text="На какой переводим"
                                                    Foreground="#CBD5E1"
                                                    FontSize="14"/>
@@ -342,7 +356,7 @@
                                         </ComboBox>
                                     </StackPanel>
 
-                                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="8">
+                                    <StackPanel Grid.Row="2" Grid.Column="0" Spacing="8">
                                         <TextBlock Text="Устройство ввода"
                                                    Foreground="#CBD5E1"
                                                    FontSize="14"/>
@@ -357,7 +371,7 @@
                                                   HorizontalAlignment="Stretch"/>
                                     </StackPanel>
 
-                                    <StackPanel Grid.Row="1" Grid.Column="1" Spacing="8">
+                                    <StackPanel Grid.Row="2" Grid.Column="1" Spacing="8">
                                         <TextBlock Text="Устройство вывода"
                                                    Foreground="#CBD5E1"
                                                    FontSize="14"/>
