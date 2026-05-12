@@ -1,18 +1,21 @@
 using System;
 using System.IO;
+using System.Linq;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace VoiceTranslatorApp.Services
 {
-    /// <summary>???? ??????????????? WAV ??? ???????: ????? ????? ????????????? ???????.</summary>
+    /// <summary>Воспроизведение WAV на выбранное устройство вывода (WASAPI) или устройство по умолчанию.</summary>
     public sealed class AudioPlaybackService : IDisposable
     {
-        private WaveOutEvent? _player;
+        private IWavePlayer? _player;
         private WaveFileReader? _reader;
         private MemoryStream? _stream;
         private Action? _currentOnFinished;
 
-        public void PlayWavBytes(byte[] wavData, Action? onFinished = null)
+        /// <param name="outputDeviceFriendlyName">Имя устройства из списка вывода Windows; null — устройство по умолчанию.</param>
+        public void PlayWavBytes(byte[] wavData, Action? onFinished = null, string? outputDeviceFriendlyName = null)
         {
             Stop();
 
@@ -33,7 +36,8 @@ namespace VoiceTranslatorApp.Services
             {
                 _stream = new MemoryStream(wavData);
                 _reader = new WaveFileReader(_stream);
-                _player = new WaveOutEvent();
+                var device = ResolveRenderDevice(outputDeviceFriendlyName);
+                _player = new WasapiOut(device, AudioClientShareMode.Shared, true, 200);
                 _player.PlaybackStopped += OnPlaybackStopped;
                 _player.Init(_reader);
                 _currentOnFinished = onFinished;
@@ -63,6 +67,26 @@ namespace VoiceTranslatorApp.Services
             }
 
             CleanupCurrent();
+        }
+
+        private static MMDevice ResolveRenderDevice(string? outputDeviceFriendlyName)
+        {
+            using var enumerator = new MMDeviceEnumerator();
+
+            if (!string.IsNullOrWhiteSpace(outputDeviceFriendlyName))
+            {
+                var match = enumerator
+                    .EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active)
+                    .FirstOrDefault(d =>
+                        string.Equals(d.FriendlyName, outputDeviceFriendlyName, StringComparison.OrdinalIgnoreCase));
+
+                if (match is not null)
+                {
+                    return match;
+                }
+            }
+
+            return enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
         }
 
         private void CleanupCurrent()

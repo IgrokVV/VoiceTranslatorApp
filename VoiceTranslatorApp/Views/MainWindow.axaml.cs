@@ -3,7 +3,6 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using NAudio.CoreAudioApi;
-using NAudio.Wave;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -42,6 +41,9 @@ namespace VoiceTranslatorApp.Views
         private const string StatusStep5And6NewCycle =
             "Шаг 5–6. Тексты удалены, озвучка отключена. Снова шаг 1: слушаю речь — говорите в микрофон.";
 
+        private const string NoOutputDevicesMessage = "Устройства вывода не найдены";
+        private const string OutputDevicesEnumerationFailedMessage = "Не удалось получить устройства вывода";
+
         private bool _isTranslationRunning;
         private ListenTranslatePhase _phase = ListenTranslatePhase.Listening;
 
@@ -51,11 +53,7 @@ namespace VoiceTranslatorApp.Views
         private IRealtimeSpeechToTextService? _speechToTextService;
         private readonly Dictionary<string, string> _inputDevices = [];
         private readonly StringBuilder _recognizedFinalText = new();
-        private readonly object _audioRecordingSync = new();
         private string _recognizedPartialText = string.Empty;
-        private WaveFileWriter? _sessionWaveWriter;
-        private string? _sessionRecordingPath;
-        private long _sessionRecordedBytes;
         private readonly ITranslationService _translationService = new YandexTranslateService();
         private readonly ITextToSpeechService _ttsService = new YandexTextToSpeechService();
         private readonly AudioPlaybackService _audioPlaybackService = new AudioPlaybackService();
@@ -275,13 +273,28 @@ namespace VoiceTranslatorApp.Views
                 }
 
                 SetComboBoxItems(InputDeviceComboBox, inputDevicePairs, "Устройства ввода не найдены");
-                SetComboBoxItems(OutputDeviceComboBox, outputDevices, "Устройства вывода не найдены");
+                SetComboBoxItems(OutputDeviceComboBox, outputDevices, NoOutputDevicesMessage);
             }
             catch
             {
                 SetComboBoxItems(InputDeviceComboBox, [], "Не удалось получить устройства ввода");
-                SetComboBoxItems(OutputDeviceComboBox, [], "Не удалось получить устройства вывода");
+                SetComboBoxItems(OutputDeviceComboBox, [], OutputDevicesEnumerationFailedMessage);
             }
+        }
+
+        private string? GetSelectedOutputDeviceFriendlyName()
+        {
+            if (!OutputDeviceComboBox.IsEnabled || OutputDeviceComboBox.SelectedItem is not string name)
+            {
+                return null;
+            }
+
+            if (name == NoOutputDevicesMessage || name == OutputDevicesEnumerationFailedMessage)
+            {
+                return null;
+            }
+
+            return name;
         }
 
         private static void SetComboBoxItems(ComboBox comboBox, IReadOnlyList<string> devices, string fallback)
@@ -435,8 +448,7 @@ namespace VoiceTranslatorApp.Views
 
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    // У playback в текущей реализации выбор устройства может быть зашит внутри; оставляем как есть.
-                    _audioPlaybackService.PlayWavBytes(wav, () => { });
+                    _audioPlaybackService.PlayWavBytes(wav, () => { }, GetSelectedOutputDeviceFriendlyName());
                 });
             }
             catch (Exception ex)
@@ -539,8 +551,6 @@ namespace VoiceTranslatorApp.Views
                     return;
                 }
 
-                BeginRecordingSession();
-
                 try
                 {
                     _speechToTextService.Start();
@@ -549,7 +559,6 @@ namespace VoiceTranslatorApp.Views
                 {
                     _isTranslationRunning = false;
                     _sessionInputDeviceId = null;
-                    FinishRecordingSession();
                     ReleaseSpeechToTextService();
                     OriginalTextTextBox.Text = $"Ошибка распознавания: {ex.Message}";
                     SetTranslationPhaseStatus($"Ошибка запуска распознавания: {ex.Message}");
@@ -577,8 +586,6 @@ namespace VoiceTranslatorApp.Views
             var capturedText = BuildCombinedRecognizedText();
             Dispatcher.UIThread.Post(() => OriginalTextTextBox.Text = capturedText.TrimEnd());
 
-            SaveCapturedAudioRecording();
-
             _phase = ListenTranslatePhase.Listening;
             _sessionInputDeviceId = null;
 
@@ -594,7 +601,6 @@ namespace VoiceTranslatorApp.Views
             _audioPlaybackService.Stop();
 
             _voiceCaptureService.Stop();
-            SaveCapturedAudioRecording();
             _voiceCaptureService.AudioChunkCaptured -= OnAudioChunkCaptured;
             _speechToTextService?.Stop();
             ReleaseSpeechToTextService();
@@ -714,12 +720,6 @@ namespace VoiceTranslatorApp.Views
             if (!_isTranslationRunning)
             {
                 return;
-            }
-
-            lock (_audioRecordingSync)
-            {
-                _sessionWaveWriter?.Write(audioChunk, 0, audioChunk.Length);
-                _sessionRecordedBytes += audioChunk.Length;
             }
 
             // Захват и распознавание только в фазе прослушивания; во время перевода/озвучки захват остановлен.
@@ -959,10 +959,10 @@ namespace VoiceTranslatorApp.Views
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                _audioPlaybackService.PlayWavBytes(wav, () =>
-                {
-                    Dispatcher.UIThread.Post(() => _ = ResumeListeningAfterCycleAsync());
-                });
+                _audioPlaybackService.PlayWavBytes(
+                    wav,
+                    () => { Dispatcher.UIThread.Post(() => _ = ResumeListeningAfterCycleAsync()); },
+                    GetSelectedOutputDeviceFriendlyName());
             });
         }
 
@@ -1086,86 +1086,5 @@ namespace VoiceTranslatorApp.Views
             TranslationVoiceModelComboBox.IsEnabled = isEnabled;
         }
 
-        private void SaveCapturedAudioRecording()
-        {
-            string? recordingPath;
-            long recordedBytes;
-
-            lock (_audioRecordingSync)
-            {
-                recordingPath = _sessionRecordingPath;
-                recordedBytes = _sessionRecordedBytes;
-            }
-
-            FinishRecordingSession();
-            if (string.IsNullOrWhiteSpace(recordingPath))
-            {
-                return;
-            }
-
-            try
-            {
-                if (recordedBytes <= 0)
-                {
-                    if (File.Exists(recordingPath))
-                    {
-                        File.Delete(recordingPath);
-                    }
-
-                    return;
-                }
-            }
-            catch
-            {
-            }
-        }
-
-        private void BeginRecordingSession()
-        {
-            lock (_audioRecordingSync)
-            {
-                FinishRecordingSessionUnsafe();
-
-                try
-                {
-                    var recordingsDirectory = ResolveRecordingsPath();
-                    Directory.CreateDirectory(recordingsDirectory);
-                    _sessionRecordingPath = Path.Combine(recordingsDirectory, $"translation-{DateTime.Now:yyyyMMdd-HHmmss}.wav");
-                    _sessionWaveWriter = new WaveFileWriter(_sessionRecordingPath, new WaveFormat(16000, 16, 1));
-                    _sessionRecordedBytes = 0;
-                }
-                catch
-                {
-                    _sessionRecordingPath = null;
-                    _sessionWaveWriter = null;
-                    _sessionRecordedBytes = 0;
-                }
-            }
-        }
-
-        private void FinishRecordingSession()
-        {
-            lock (_audioRecordingSync)
-            {
-                FinishRecordingSessionUnsafe();
-            }
-        }
-
-        private void FinishRecordingSessionUnsafe()
-        {
-            _sessionWaveWriter?.Dispose();
-            _sessionWaveWriter = null;
-        }
-
-        private static string ResolveRecordingsPath()
-        {
-            var solutionRoot = FindSolutionRoot();
-            if (!string.IsNullOrWhiteSpace(solutionRoot))
-            {
-                return Path.Combine(solutionRoot, "VoiceTranslatorApp", "Recordings");
-            }
-
-            return Path.Combine(AppContext.BaseDirectory, "Recordings");
-        }
     }
 }
